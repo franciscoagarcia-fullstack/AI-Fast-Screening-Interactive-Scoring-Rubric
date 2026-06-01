@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Fast Screening — Interactive Scoring Rubric</title>
+    <style>
+      :root {
+        --bg: #f6f7fb;
+        --card: #ffffff;
+        --ink: #16202d;
+        --ink-soft: #4b5b6e;
+        --line: #e3e8ef;
+        --accent: #3563e9;
+        --accent-soft: #eaf0ff;
+        --warn: #d97706;
+        --score-1: #dc2626;
+        --score-2: #ea580c;
+        --score-3: #d97706;
+        --score-4: #16a34a;
+        --score-5: #047857;
+        --shadow: 0 1px 2px rgba(20, 30, 50, 0.06), 0 4px 16px rgba(20, 30, 50, 0.05);
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        line-height: 1.5;
+      }
+      .wrap { max-width: 1240px; margin: 0 auto; padding: 32px 24px 80px; }
+      header { margin-bottom: 24px; }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+        letter-spacing: -0.01em;
+      }
+      .lede { color: var(--ink-soft); margin: 0; max-width: 760px; }
+      .layout {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: 340px 1fr 1fr;
+        align-items: start;
+      }
+      @media (max-width: 1080px) {
+        .layout { grid-template-columns: 1fr 1fr; }
+      }
+      @media (max-width: 720px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 20px 22px;
+        box-shadow: var(--shadow);
+      }
+      .card h2 {
+        margin: 0 0 14px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--ink-soft);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .field { margin-bottom: 14px; }
+      .field:last-child { margin-bottom: 0; }
+      .field label {
+        display: flex; justify-content: space-between; align-items: baseline;
+        font-size: 13px; color: var(--ink-soft); margin-bottom: 6px;
+      }
+      .field label .val {
+        font-family: var(--mono);
+        color: var(--ink);
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .field input[type="range"] { width: 100%; accent-color: var(--accent); }
+      .field input[type="number"] {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font: inherit;
+        font-family: var(--mono);
+      }
+      .field input[type="number"]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+      .field .hint { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+
+      /* Result card */
+      .score-block {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        padding: 18px;
+        border-radius: 12px;
+        background: var(--accent-soft);
+        text-align: center;
+        margin-bottom: 16px;
+        transition: background 200ms ease;
+      }
+      .score-num {
+        font-size: 88px;
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.02em;
+        transition: color 200ms ease;
+      }
+      .score-label {
+        margin-top: 8px;
+        font-weight: 600;
+        font-size: 16px;
+      }
+      .score-reason {
+        font-size: 13px;
+        color: var(--ink-soft);
+        margin-top: 4px;
+      }
+      .breakdown { display: flex; flex-direction: column; gap: 14px; }
+      .gauge {
+        display: grid;
+        grid-template-columns: 130px 1fr 56px;
+        align-items: center;
+        gap: 10px;
+      }
+      .gauge .gauge-label {
+        font-size: 12px;
+        color: var(--ink-soft);
+      }
+      .gauge .gauge-track {
+        position: relative;
+        height: 10px;
+        background: var(--line);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+      .gauge .gauge-fill {
+        height: 100%;
+        background: var(--accent);
+        width: 0;
+        transition: width 200ms ease, background 200ms ease;
+      }
+      .gauge .gauge-marker {
+        position: absolute;
+        top: -3px;
+        bottom: -3px;
+        width: 2px;
+        background: var(--ink-soft);
+        opacity: 0.4;
+      }
+      .gauge .gauge-val {
+        text-align: right;
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .gauge.disabled { opacity: 0.45; }
+
+      /* Formula card */
+      .formula-card {
+        padding: 12px 14px;
+        box-shadow: none;
+        background: #fafbfd;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+      .formula-row {
+        display: grid;
+        grid-template-columns: 1.4fr auto auto auto auto;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 0;
+        font-size: 12px;
+        border-bottom: 1px dashed var(--line);
+      }
+      .formula-row:last-child { border-bottom: none; }
+      .formula-row .name { color: var(--ink); }
+      .formula-row .x { color: var(--ink-soft); }
+      .formula-row .v { font-family: var(--mono); }
+      .formula-row .w { font-family: var(--mono); color: var(--ink-soft); }
+      .formula-row .out { font-family: var(--mono); text-align: right; font-weight: 600; }
+      .formula-total {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        margin-top: 6px;
+        padding-top: 10px;
+        border-top: 2px solid var(--ink);
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .formula-total .out { font-family: var(--mono); }
+
+      /* Decision tree */
+      .tree {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .tree-node {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: #fafbfd;
+        border: 1px solid var(--line);
+        align-items: center;
+        font-size: 13px;
+        transition: background 200ms ease, border-color 200ms ease;
+      }
+      .tree-node .cond { color: var(--ink); }
+      .tree-node .cond code {
+        background: var(--card);
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-family: var(--mono);
+        font-size: 12px;
+        border: 1px solid var(--line);
+      }
+      .tree-node .verdict {
+        font-weight: 600;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .tree-node.active {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+      }
+      .tree-node .reason-text {
+        color: var(--ink-soft);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+
+      .footer {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-top: 24px;
+        color: var(--ink-soft);
+        font-size: 13px;
+      }
+      button.reset {
+        background: var(--card);
+        border: 1px solid var(--line);
+        padding: 8px 14px;
+        border-radius: 8px;
+        font: inherit;
+        color: var(--ink);
+        cursor: pointer;
+      }
+      button.reset:hover { background: var(--bg); }
+
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        background: var(--accent-soft);
+        color: var(--accent);
+        margin-left: 8px;
+        vertical-align: middle;
+      }
+
+      .meter-snap-marks {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: var(--ink-soft);
+        font-family: var(--mono);
+        padding-top: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>AI Fast Screening — Interactive Scoring Rubric</h1>
+        <p class="lede">
+          The fast-screening agent ranks each candidate <strong>1–5</strong>. Score 1 fails the
+          skill prerequisite; scores 2–5 are tiered by the weighted <em>strength</em> formula.
+          Tune the candidate inputs and watch the score, gauges, and decision tree update in real time.
+        </p>
+      </header>
+
+      <div class="layout">
+        <!-- ────────────── INPUTS ────────────── -->
+        <div class="card" id="card-inputs">
+          <h2>Candidate inputs</h2>
+          <div class="field">
+            <label for="i-matched">Matched skills <span class="val" id="v-matched">—</span></label>
+            <input type="number" id="i-matched" min="0" step="1" />
+            <p class="hint">Profile + Q&amp;A + resume skills that match the posting.</p>
+          </div>
+          <div class="field">
+            <label for="i-required">Required skills <span class="val" id="v-required">—</span></label>
+            <input type="number" id="i-required" min="1" step="1" />
+            <p class="hint">Total required by the Job Posting.</p>
+          </div>
+          <div class="field">
+            <label for="i-exp">Experience relevance <span class="val" id="v-exp">—</span></label>
+            <input type="range" id="i-exp" min="0" max="100" step="5" list="snap-100" />
+            <div class="meter-snap-marks"><span>0 unrelated</span><span>50 adjacent</span><span>100 exact</span></div>
+          </div>
+          <div class="field">
+            <label for="i-qa">Q&amp;A quality <span class="val" id="v-qa">—</span></label>
+            <input type="range" id="i-qa" min="0" max="100" step="5" list="snap-100" />
+            <div class="meter-snap-marks"><span>0 missing</span><span>50 generic</span><span>100 detailed</span></div>
+          </div>
+          <div class="field">
+            <label for="i-edu">Education / certification <span class="val" id="v-edu">—</span></label>
+            <input type="range" id="i-edu" min="0" max="100" step="5" list="snap-100" />
+            <div class="meter-snap-marks"><span>0 unrelated</span><span>50 related</span><span>100 direct</span></div>
+          </div>
+          <datalist id="snap-100">
+            <option value="0"></option>
+            <option value="50"></option>
+            <option value="100"></option>
+          </datalist>
+        </div>
+
+        <!-- ────────────── RESULT ────────────── -->
+        <div class="card">
+          <h2>Live result</h2>
+          <div class="score-block" id="score-block">
+            <div class="score-num" id="out-score">—</div>
+            <div class="score-label" id="out-label">—</div>
+            <div class="score-reason" id="out-reason">—</div>
+          </div>
+          <div class="breakdown">
+            <div class="gauge" id="g-skill">
+              <div class="gauge-label">skill_match_score</div>
+              <div class="gauge-track">
+                <div class="gauge-fill"></div>
+                <div class="gauge-marker"></div>
+              </div>
+              <div class="gauge-val">—</div>
+            </div>
+            <div class="gauge" id="g-strength">
+              <div class="gauge-label">strength_score</div>
+              <div class="gauge-track">
+                <div class="gauge-fill"></div>
+              </div>
+              <div class="gauge-val">—</div>
+            </div>
+            <div class="formula-card">
+              <div id="formula-rows"></div>
+              <div class="formula-total"><span>strength_score</span><span class="out" id="formula-total-val">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ────────────── DECISION TREE ────────────── -->
+        <div class="card">
+          <h2>Decision tree <span class="badge">live</span></h2>
+          <div class="tree" id="tree"></div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <span>Source: <code>tmp/Fast Screening - Scoring Rules &amp; Rubric - skills-formula.csv</code></span>
+        <button class="reset" id="reset-btn" type="button">Reset to defaults</button>
+      </div>
+    </div>
+
+    <script>
+      // Fixed defaults from the CSV (weights and thresholds are constants now).
+      const WEIGHTS = {
+        skill: 0.5,
+        exp: 0.2,
+        qa: 0.2,
+        edu: 0.1,
+      };
+      const THRESHOLDS = {
+        skill: 80, // skill_match_score < this → score 1
+        t2: 70,    // strength_score < this → score 2
+        t3: 80,    // strength_score < this → score 3
+        t4: 90,    // strength_score < this → score 4; >= → score 5
+      };
+
+      const DEFAULTS = {
+        matched: 7,
+        required: 10,
+        exp: 50,
+        qa: 50,
+        edu: 50,
+      };
+
+      const SCORE_COLORS = {
+        1: getCSS('--score-1'),
+        2: getCSS('--score-2'),
+        3: getCSS('--score-3'),
+        4: getCSS('--score-4'),
+        5: getCSS('--score-5'),
+      };
+
+      const SCORE_LABELS = {
+        1: 'Skills Insufficient',
+        2: 'Weak candidate',
+        3: 'Ok candidate',
+        4: 'Strong candidate',
+        5: 'Exceptional candidate',
+      };
+
+      const els = {
+        matched: byId('i-matched'),
+        required: byId('i-required'),
+        exp: byId('i-exp'),
+        qa: byId('i-qa'),
+        edu: byId('i-edu'),
+      };
+
+      const valEls = {
+        matched: byId('v-matched'),
+        required: byId('v-required'),
+        exp: byId('v-exp'),
+        qa: byId('v-qa'),
+        edu: byId('v-edu'),
+      };
+
+      function getCSS(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      }
+      function byId(id) { return document.getElementById(id); }
+
+      function applyState(state) {
+        for (const k of Object.keys(state)) {
+          if (els[k]) els[k].value = String(state[k]);
+        }
+        render();
+      }
+
+      function readState() {
+        return {
+          matched: Math.max(0, Number(els.matched.value) || 0),
+          required: Math.max(1, Number(els.required.value) || 1),
+          exp: Number(els.exp.value),
+          qa: Number(els.qa.value),
+          edu: Number(els.edu.value),
+        };
+      }
+
+      function compute(s) {
+        const skillPct = Math.min(100, (s.matched / s.required) * 100);
+        const strength =
+          skillPct * WEIGHTS.skill +
+          s.exp    * WEIGHTS.exp +
+          s.qa     * WEIGHTS.qa +
+          s.edu    * WEIGHTS.edu;
+
+        let score = 1;
+        let reason = SCORE_LABELS[1];
+        const prereqMet = skillPct >= THRESHOLDS.skill;
+
+        if (!prereqMet) {
+          score = 1;
+        } else if (strength < THRESHOLDS.t2) {
+          score = 2;
+        } else if (strength < THRESHOLDS.t3) {
+          score = 3;
+        } else if (strength < THRESHOLDS.t4) {
+          score = 4;
+        } else {
+          score = 5;
+        }
+        reason = SCORE_LABELS[score];
+
+        return { skillPct, strength, score, reason, prereqMet };
+      }
+
+      function render() {
+        const s = readState();
+        const r = compute(s);
+
+        // Inline value labels
+        valEls.matched.textContent = s.matched;
+        valEls.required.textContent = s.required;
+        valEls.exp.textContent = s.exp;
+        valEls.qa.textContent = s.qa;
+        valEls.edu.textContent = s.edu;
+
+        // Score block
+        const color = SCORE_COLORS[r.score];
+        byId('out-score').textContent = r.score;
+        byId('out-score').style.color = color;
+        byId('out-label').textContent = SCORE_LABELS[r.score];
+        byId('out-label').style.color = color;
+        byId('out-reason').textContent = r.reason;
+        byId('score-block').style.background = hexToRgba(color, 0.10);
+
+        // Gauges
+        const skillGauge = byId('g-skill');
+        const skillFill = skillGauge.querySelector('.gauge-fill');
+        const skillMarker = skillGauge.querySelector('.gauge-marker');
+        skillFill.style.width = clampPct(r.skillPct) + '%';
+        skillFill.style.background = r.prereqMet ? getCSS('--score-4') : getCSS('--score-1');
+        skillMarker.style.left = clampPct(THRESHOLDS.skill) + '%';
+        skillGauge.querySelector('.gauge-val').textContent = r.skillPct.toFixed(1) + '%';
+
+        const strengthGauge = byId('g-strength');
+        const strengthFill = strengthGauge.querySelector('.gauge-fill');
+        if (r.prereqMet) {
+          strengthGauge.classList.remove('disabled');
+          strengthFill.style.width = clampPct(r.strength) + '%';
+          strengthFill.style.background = color;
+          strengthGauge.querySelector('.gauge-val').textContent = r.strength.toFixed(1);
+        } else {
+          strengthGauge.classList.add('disabled');
+          strengthFill.style.width = '0%';
+          strengthGauge.querySelector('.gauge-val').textContent = 'n/a';
+        }
+
+        // Formula breakdown
+        const rows = [
+          { name: 'skill_match_score',             val: r.skillPct, weight: WEIGHTS.skill },
+          { name: 'experience_relevance_score',    val: s.exp,      weight: WEIGHTS.exp },
+          { name: 'qa_quality_score',              val: s.qa,       weight: WEIGHTS.qa },
+          { name: 'education_certification_score', val: s.edu,      weight: WEIGHTS.edu },
+        ];
+        const html = rows.map(row => {
+          const contribution = row.val * row.weight;
+          return `
+            <div class="formula-row">
+              <span class="name">${row.name}</span>
+              <span class="v">${row.val.toFixed(1)}</span>
+              <span class="x">×</span>
+              <span class="w">${row.weight.toFixed(2)}</span>
+              <span class="out">= ${contribution.toFixed(2)}</span>
+            </div>`;
+        }).join('');
+        byId('formula-rows').innerHTML = html;
+        byId('formula-total-val').textContent = r.strength.toFixed(2);
+
+        // Decision tree
+        renderTree(r);
+      }
+
+      function renderTree(r) {
+        const nodes = [
+          {
+            cond: `<code>skill_match_score</code> &lt; ${THRESHOLDS.skill}%`,
+            verdict: `<span style="color:${SCORE_COLORS[1]}">Score 1</span>`,
+            reason: SCORE_LABELS[1],
+            active: !r.prereqMet,
+          },
+          {
+            cond: `prerequisites met AND <code>strength_score</code> &lt; ${THRESHOLDS.t2}`,
+            verdict: `<span style="color:${SCORE_COLORS[2]}">Score 2</span>`,
+            reason: SCORE_LABELS[2],
+            active: r.prereqMet && r.strength < THRESHOLDS.t2,
+          },
+          {
+            cond: `prerequisites met AND <code>strength_score</code> &lt; ${THRESHOLDS.t3}`,
+            verdict: `<span style="color:${SCORE_COLORS[3]}">Score 3</span>`,
+            reason: SCORE_LABELS[3],
+            active: r.prereqMet && r.strength >= THRESHOLDS.t2 && r.strength < THRESHOLDS.t3,
+          },
+          {
+            cond: `prerequisites met AND <code>strength_score</code> &lt; ${THRESHOLDS.t4}`,
+            verdict: `<span style="color:${SCORE_COLORS[4]}">Score 4</span>`,
+            reason: SCORE_LABELS[4],
+            active: r.prereqMet && r.strength >= THRESHOLDS.t3 && r.strength < THRESHOLDS.t4,
+          },
+          {
+            cond: `prerequisites met AND <code>strength_score</code> &ge; ${THRESHOLDS.t4}`,
+            verdict: `<span style="color:${SCORE_COLORS[5]}">Score 5</span>`,
+            reason: SCORE_LABELS[5],
+            active: r.prereqMet && r.strength >= THRESHOLDS.t4,
+          },
+        ];
+        byId('tree').innerHTML = nodes.map(n => `
+          <div class="tree-node ${n.active ? 'active' : ''}">
+            <div>
+              <div class="cond">${n.cond}</div>
+              <div class="reason-text">${n.reason}</div>
+            </div>
+            <div class="verdict">${n.verdict}</div>
+          </div>
+        `).join('');
+      }
+
+      function clampPct(v) { return Math.max(0, Math.min(100, v)); }
+
+      function hexToRgba(hex, a) {
+        const h = hex.replace('#', '');
+        const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+        const r = parseInt(full.slice(0, 2), 16);
+        const g = parseInt(full.slice(2, 4), 16);
+        const b = parseInt(full.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${a})`;
+      }
+
+      // Wire up listeners
+      Object.values(els).forEach(el => {
+        el.addEventListener('input', render);
+      });
+      byId('reset-btn').addEventListener('click', () => applyState(DEFAULTS));
+
+      // Initial render
+      applyState(DEFAULTS);
+    </script>
+  </body>
+</html>
