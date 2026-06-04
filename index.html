@@ -88,6 +88,16 @@
       }
       .field input[type="number"]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
       .field .hint { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+      .field .check {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 13px; color: var(--ink); cursor: pointer;
+        margin-bottom: 0;
+      }
+      .field .check input[type="checkbox"] {
+        width: 16px; height: 16px;
+        accent-color: var(--score-1);
+        cursor: pointer;
+      }
 
       /* Result card */
       .score-block {
@@ -300,6 +310,13 @@
             <p class="hint">Total required by the Job Posting.</p>
           </div>
           <div class="field">
+            <label class="check" for="i-missing">
+              <input type="checkbox" id="i-missing" />
+              Missing required skill(s)
+            </label>
+            <p class="hint">If checked, the candidate cannot score higher than 1, regardless of other inputs.</p>
+          </div>
+          <div class="field">
             <label for="i-exp">Experience relevance <span class="val" id="v-exp">—</span></label>
             <input type="range" id="i-exp" min="0" max="100" step="5" list="snap-100" />
             <div class="meter-snap-marks"><span>0 unrelated</span><span>50 adjacent</span><span>100 exact</span></div>
@@ -368,9 +385,9 @@
     <script>
       // Fixed defaults from the CSV (weights and thresholds are constants now).
       const WEIGHTS = {
-        skill: 0.5,
-        exp: 0.2,
-        qa: 0.2,
+        skill: 0.2,
+        exp: 0.3,
+        qa: 0.4,
         edu: 0.1,
       };
       const THRESHOLDS = {
@@ -383,6 +400,7 @@
       const DEFAULTS = {
         matched: 7,
         required: 10,
+        missing: false,
         exp: 50,
         qa: 50,
         edu: 50,
@@ -407,6 +425,7 @@
       const els = {
         matched: byId('i-matched'),
         required: byId('i-required'),
+        missing: byId('i-missing'),
         exp: byId('i-exp'),
         qa: byId('i-qa'),
         edu: byId('i-edu'),
@@ -427,7 +446,9 @@
 
       function applyState(state) {
         for (const k of Object.keys(state)) {
-          if (els[k]) els[k].value = String(state[k]);
+          if (!els[k]) continue;
+          if (els[k].type === 'checkbox') els[k].checked = Boolean(state[k]);
+          else els[k].value = String(state[k]);
         }
         render();
       }
@@ -436,6 +457,7 @@
         return {
           matched: Math.max(0, Number(els.matched.value) || 0),
           required: Math.max(1, Number(els.required.value) || 1),
+          missing: els.missing.checked,
           exp: Number(els.exp.value),
           qa: Number(els.qa.value),
           edu: Number(els.edu.value),
@@ -452,9 +474,13 @@
 
         let score = 1;
         let reason = SCORE_LABELS[1];
+        const missingReq = s.missing;
         const prereqMet = skillPct >= THRESHOLDS.skill;
 
-        if (!prereqMet) {
+        if (missingReq) {
+          // Hard cap: missing any required skill limits the score to 1.
+          score = 1;
+        } else if (!prereqMet) {
           score = 1;
         } else if (strength < THRESHOLDS.t2) {
           score = 2;
@@ -465,9 +491,9 @@
         } else {
           score = 5;
         }
-        reason = SCORE_LABELS[score];
+        reason = missingReq ? 'Missing required skill(s) — score capped at 1' : SCORE_LABELS[score];
 
-        return { skillPct, strength, score, reason, prereqMet };
+        return { skillPct, strength, score, reason, prereqMet, missingReq };
       }
 
       function render() {
@@ -501,7 +527,7 @@
 
         const strengthGauge = byId('g-strength');
         const strengthFill = strengthGauge.querySelector('.gauge-fill');
-        if (r.prereqMet) {
+        if (r.prereqMet && !r.missingReq) {
           strengthGauge.classList.remove('disabled');
           strengthFill.style.width = clampPct(r.strength) + '%';
           strengthFill.style.background = color;
@@ -538,36 +564,43 @@
       }
 
       function renderTree(r) {
+        const ok = !r.missingReq;
         const nodes = [
+          {
+            cond: `<code>missing_required_skills</code> = true`,
+            verdict: `<span style="color:${SCORE_COLORS[1]}">Score 1</span>`,
+            reason: 'Hard cap: missing any required skill limits the score to 1.',
+            active: r.missingReq,
+          },
           {
             cond: `<code>skill_match_score</code> &lt; ${THRESHOLDS.skill}%`,
             verdict: `<span style="color:${SCORE_COLORS[1]}">Score 1</span>`,
             reason: SCORE_LABELS[1],
-            active: !r.prereqMet,
+            active: ok && !r.prereqMet,
           },
           {
             cond: `prerequisites met AND <code>strength_score</code> &lt; ${THRESHOLDS.t2}`,
             verdict: `<span style="color:${SCORE_COLORS[2]}">Score 2</span>`,
             reason: SCORE_LABELS[2],
-            active: r.prereqMet && r.strength < THRESHOLDS.t2,
+            active: ok && r.prereqMet && r.strength < THRESHOLDS.t2,
           },
           {
             cond: `prerequisites met AND <code>strength_score</code> &lt; ${THRESHOLDS.t3}`,
             verdict: `<span style="color:${SCORE_COLORS[3]}">Score 3</span>`,
             reason: SCORE_LABELS[3],
-            active: r.prereqMet && r.strength >= THRESHOLDS.t2 && r.strength < THRESHOLDS.t3,
+            active: ok && r.prereqMet && r.strength >= THRESHOLDS.t2 && r.strength < THRESHOLDS.t3,
           },
           {
             cond: `prerequisites met AND <code>strength_score</code> &lt; ${THRESHOLDS.t4}`,
             verdict: `<span style="color:${SCORE_COLORS[4]}">Score 4</span>`,
             reason: SCORE_LABELS[4],
-            active: r.prereqMet && r.strength >= THRESHOLDS.t3 && r.strength < THRESHOLDS.t4,
+            active: ok && r.prereqMet && r.strength >= THRESHOLDS.t3 && r.strength < THRESHOLDS.t4,
           },
           {
             cond: `prerequisites met AND <code>strength_score</code> &ge; ${THRESHOLDS.t4}`,
             verdict: `<span style="color:${SCORE_COLORS[5]}">Score 5</span>`,
             reason: SCORE_LABELS[5],
-            active: r.prereqMet && r.strength >= THRESHOLDS.t4,
+            active: ok && r.prereqMet && r.strength >= THRESHOLDS.t4,
           },
         ];
         byId('tree').innerHTML = nodes.map(n => `
